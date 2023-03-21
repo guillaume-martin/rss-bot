@@ -1,4 +1,9 @@
+boto3==1.26.95
+botocore==1.29.95
 feedparser==6.0.10
+jmespath==1.0.1
 python-dateutil==2.8.2
+s3transfer==0.6.0
 sgmllib3k==1.0.0
 six==1.16.0
+urllib3==1.26.15

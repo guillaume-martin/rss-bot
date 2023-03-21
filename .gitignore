@@ -1,6 +1,7 @@
 # Development files
 prototype
 *.opml
+*.opml.bckp
 
 # Artefacts
 *.zip

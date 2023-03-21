@@ -5,7 +5,7 @@
 """
 import os
 import xml.etree.ElementTree as et
-from datetime import datetime, date, timedelta
+from datetime import date, timedelta
 import smtplib
 import ssl
 import time
@@ -14,9 +14,9 @@ from email.mime.multipart import MIMEMultipart
 
 import feedparser
 import dateutil.parser as parser
+import boto3
+from botocore.exceptions import ClientError
 
-
-FEEDLIST = "feedlist.opml"
 
 # Load environment variables
 try:
@@ -28,7 +28,7 @@ try:
     SMTP_PWD = os.getenv("SMTP_PWD", None)
     FROM_EMAIL = os.getenv("FROM_EMAIL", None)
     TO_EMAIL = os.getenv("TO_EMAIL", None)
-except:
+except Exception:
     print("Failed to load environment variables.")
 
 
@@ -38,10 +38,11 @@ class SmtpMailer:
         self.smtp_server = smtp_server
         self.smtp_port = smtp_port
         self.smtp_user = smtp_user
-        self.smtp_pwd = smtp_pwd    
+        self.smtp_pwd = smtp_pwd
         self.context = ssl.create_default_context()
 
-    def _set_message(self, from_email, to_email, subject, message, type="text"):
+    def _set_message(self, from_email, to_email,
+                     subject, message, type="text"):
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = from_email
@@ -51,7 +52,8 @@ class SmtpMailer:
 
         self.message = msg.as_string()
 
-    def send_email(self, from_email, to_email, subject=None, content=None, type="text"):
+    def send_email(self, from_email, to_email,
+                   subject=None, content=None, type="text"):
         self._set_message(from_email, to_email, subject, content, type)
 
         with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
@@ -77,12 +79,20 @@ def timer(func):
     return wrap_func
 
 
-def load_feeds(opml_file: str):
+def load_feeds():
     """ Loads the content of the opml file into an xml tree object
     """
-    with open(opml_file, "r") as f:
+    aws_bucket = os.getenv("AWS_BUCKET")
+    feedlist_file = os.getenv("FEEDLIST_FILE")
+    try:
+        s3 = boto3.client("s3")
+        response = s3.get_object(Bucket=aws_bucket, Key=feedlist_file)
+    except ClientError as e:
+        print(f"Failed to load the the feeds list: {e}")
+        return None
 
-        tree = et.parse(opml_file)
+    feeds = response["Body"].read()
+    tree = et.fromstring(feeds)
 
     return tree
 
@@ -114,7 +124,7 @@ def published_date(entry: dict):
             pub_date = entry[k]
             dt = parser.parse(pub_date)
             return dt
-        except:
+        except Exception:
             continue
 
     return None
@@ -195,8 +205,11 @@ def process_outline(outline):
 def main():
 
     # Load feeds
-    tree = load_feeds(FEEDLIST)
+    tree = load_feeds()
+    assert tree is not None, "Failed to load the RSS feeds."
+
     nodes = tree.findall(".//outline")
+
     report = ""
     errors = "<hr><h1>Errors</h1>"
 
@@ -213,7 +226,7 @@ def main():
         elif blog_articles is not None:
             report += blog_articles
         else:
-           continue
+            continue
 
     report += errors
 
@@ -225,4 +238,3 @@ def main():
 
 def lambda_handler(event, context):
     main()
-
